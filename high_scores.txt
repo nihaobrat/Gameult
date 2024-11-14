@@ -1,0 +1,3 @@
+Easy:47
+Medium:40
+Hard:15
