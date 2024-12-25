@@ -1,39 +1,44 @@
 import tkinter as tk
-from PIL import Image, ImageDraw, ImageTk
 import colorsys
 import random
 import subprocess
+import sys
 import os
-import subprocess 
+from PIL import Image, ImageDraw, ImageTk
 
-# Создаем основное окно
+# Определяем директорию, в которой находится main.py
+script_dir = os.path.dirname(os.path.abspath(__file__))
+
+# ---------------------
+# НАСТРОЙКА ОКНА TKINTER
+# ---------------------
 app = tk.Tk()
-app.title("Добро пожаловать в Игровое Приложение")
+app.title("GAMEULT")
 app.geometry("1920x1080")
 app.configure(bg="#2c003e")
 app.attributes("-fullscreen", True)  # Полноэкранный режим
 
-# Переменные для отслеживания цвета и текущего выделенного элемента
-button_hue = 0
-selected_button_index = 0
+# ---------------------
+# ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
+# ---------------------
+selected_button_index = 0  # Для главных кнопок ("Играть" и "Выйти")
+selected_game_index = 0    # Для списка игр
 buttons = []
+button_hue = 0             # Для анимации кнопок
 
-# Параметры для анимации
-balls = []
-snakes = []
-num_balls = 55
-num_snakes = 15
-ball_speed = 6
-snake_speed = 4
-ball_animation_active = True
+# Список игр (удалена "TetrisULT")
+game_list = [
+    "AgarioULT",
+    "SnakeULT",
+    "HangmanULT",
+    "TicTacToeULT",
+    "PongULT",
+    "MinesweeperULT",
+]
 
-# Canvas для анимации шаров и змей
-screen_width = app.winfo_screenwidth()
-screen_height = app.winfo_screenheight()
-background_canvas = tk.Canvas(app, width=screen_width, height=screen_height, bg="#2c003e", highlightthickness=0)
-background_canvas.place(x=0, y=0)
-
-# Функция для плавного изменения цвета кнопок
+# ---------------------
+# АНИМАЦИЯ КНОПОК
+# ---------------------
 def animate_button_colors():
     global button_hue
     rgb = colorsys.hsv_to_rgb(button_hue, 0.5, 1)
@@ -46,47 +51,211 @@ def animate_button_colors():
         button_hue = 0
     app.after(100, animate_button_colors)
 
-# Функция для анимации рамки вокруг заголовка с надписью GAMEULT
-border_hue = 0
-def animate_border():
-    global border_hue
-    rgb = colorsys.hsv_to_rgb(border_hue, 0.7, 0.9)  # Настраиваем насыщенность и яркость
-    hex_color = f'#{int(rgb[0]*255):02x}{int(rgb[1]*255):02x}{int(rgb[2]*255):02x}'
-    border_canvas.itemconfig(border_rect, outline=hex_color)
-    border_hue += 0.01
-    if border_hue > 1:
-        border_hue = 0
-    app.after(50, animate_border)
+# ---------------------
+# АНИМАЦИИ НА ГЛАВНОМ ЭКРАНЕ
+# ---------------------
+# Canvas для анимаций (фон)
+animation_canvas = tk.Canvas(app, width=1920, height=1080, bg="#2c003e", highlightthickness=0)
+animation_canvas.pack(fill="both", expand=True)
 
-# Заголовок с анимированной прямоугольной рамкой
-border_canvas = tk.Canvas(app, width=1000, height=200, bg="#2c003e", highlightthickness=0)
-border_canvas.place(relx=0.5, rely=0.25, anchor="center")
-border_rect = border_canvas.create_rectangle(10, 10, 990, 190, width=12)
-title_label = tk.Label(border_canvas, text="G A M E U L T", font=("Helvetica", 100, "bold"), fg="#00ff00", bg="#2c003e")
-title_label.place(relx=0.5, rely=0.5, anchor="center")
+# Ползающие змейки
+class Snake:
+    def __init__(self, canvas, length=15):
+        self.canvas = canvas
+        self.length = length
+        self.segments = []
+        self.direction = random.choice(["left", "right", "up", "down"])
+        self.speed = 10  # Увеличенная скорость
+        self.hue = random.random()  # Начальный оттенок
+        self.create_snake()
 
-# Функция для анимации рамки вокруг плашки кнопок
-button_frame_border_hue = 0
-def animate_buttons_frame_border():
-    global button_frame_border_hue
-    rgb = colorsys.hsv_to_rgb(button_frame_border_hue, 0.7, 0.9)  # Настраиваем насыщенность и яркость
-    hex_color = f'#{int(rgb[0]*255):02x}{int(rgb[1]*255):02x}{int(rgb[2]*255):02x}'
-    buttons_frame_border_canvas.itemconfig(button_frame_border_rect, outline=hex_color)
-    button_frame_border_hue += 0.01
-    if button_frame_border_hue > 1:
-        button_frame_border_hue = 0
-    app.after(50, animate_buttons_frame_border)
+    def create_snake(self):
+        start_x = random.randint(100, 1820)
+        start_y = random.randint(100, 980)
+        for i in range(self.length):
+            color = self.get_color()
+            segment = self.canvas.create_rectangle(
+                start_x - i*20, start_y,
+                start_x - i*20 + 15, start_y + 15,
+                fill=color, outline=""
+            )
+            self.segments.append(segment)
 
-# Создаем вертикальную рамку для плашки кнопок
-buttons_frame_border_canvas = tk.Canvas(app, width=230, height=300, bg="#2c003e", highlightthickness=0)
-buttons_frame_border_canvas.place(relx=0.5, rely=0.65, anchor="center")
-button_frame_border_rect = buttons_frame_border_canvas.create_rectangle(10, 10, 215, 290, width=12)
+    def get_color(self):
+        rgb = colorsys.hsv_to_rgb(self.hue, 1, 1)
+        rgb = tuple(int(c * 255) for c in rgb)
+        return f'#{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}'
 
-# Остальные функции из вашего кода для анимации и навигации по кнопкам
+    def update_color(self):
+        self.hue += 0.005
+        if self.hue > 1:
+            self.hue = 0
+
+    def move(self):
+        self.update_color()
+        head_coords = self.canvas.coords(self.segments[0])
+        if self.direction == "left":
+            dx, dy = -self.speed, 0
+        elif self.direction == "right":
+            dx, dy = self.speed, 0
+        elif self.direction == "up":
+            dx, dy = 0, -self.speed
+        else:
+            dx, dy = 0, self.speed
+
+        # Проверка границ
+        if head_coords[0] + dx < 0 or head_coords[2] + dx > 1920:
+            self.direction = random.choice(["up", "down"])
+        if head_coords[1] + dy < 0 or head_coords[3] + dy > 1080:
+            self.direction = random.choice(["left", "right"])
+
+        # Передвигаем все сегменты
+        for i in range(len(self.segments)-1, 0, -1):
+            coords = self.canvas.coords(self.segments[i-1])
+            self.canvas.coords(
+                self.segments[i],
+                coords[0], coords[1],
+                coords[0] + 15, coords[1] + 15
+            )
+        self.canvas.move(self.segments[0], dx, dy)
+
+        # Обновляем цвет всех сегментов
+        for segment in self.segments:
+            self.canvas.itemconfig(segment, fill=self.get_color())
+
+# Шарики Agario
+class AgarioBall:
+    def __init__(self, canvas):
+        self.canvas = canvas
+        self.radius = random.randint(10, 30)
+        self.x = random.randint(self.radius, 1920 - self.radius)
+        self.y = random.randint(self.radius, 1080 - self.radius)
+        self.dx = random.choice([-5, -4, -3, 3, 4, 5])  # Увеличенная скорость
+        self.dy = random.choice([-5, -4, -3, 3, 4, 5])
+        self.hue = random.random()
+        self.create_ball()
+
+    def create_ball(self):
+        color = self.get_color()
+        self.ball = self.canvas.create_oval(
+            self.x - self.radius, self.y - self.radius,
+            self.x + self.radius, self.y + self.radius,
+            fill=color, outline=""
+        )
+
+    def get_color(self):
+        rgb = colorsys.hsv_to_rgb(self.hue, 1, 1)
+        rgb = tuple(int(c * 255) for c in rgb)
+        return f'#{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}'
+
+    def update_color(self):
+        self.hue += 0.003
+        if self.hue > 1:
+            self.hue = 0
+
+    def move(self):
+        self.update_color()
+        self.canvas.move(self.ball, self.dx, self.dy)
+        coords = self.canvas.coords(self.ball)
+        if coords[0] < 0 or coords[2] > 1920:
+            self.dx *= -1
+        if coords[1] < 0 or coords[3] > 1080:
+            self.dy *= -1
+
+        # Обновляем цвет шара
+        self.canvas.itemconfig(self.ball, fill=self.get_color())
+
+# Генерирующиеся крестики-нолики
+class TicTacToeSymbol:
+    def __init__(self, canvas, symbol="X", color="#ffffff"):
+        self.canvas = canvas
+        self.symbol = symbol
+        self.color = color
+        self.size = 30
+        self.x = random.randint(50, 1870)
+        self.y = random.randint(50, 1030)
+        self.create_symbol()
+
+    def create_symbol(self):
+        if self.symbol == "X":
+            self.line1 = self.canvas.create_line(
+                self.x - self.size, self.y - self.size,
+                self.x + self.size, self.y + self.size,
+                fill=self.color, width=3
+            )
+            self.line2 = self.canvas.create_line(
+                self.x - self.size, self.y + self.size,
+                self.x + self.size, self.y - self.size,
+                fill=self.color, width=3
+            )
+        else:
+            self.circle = self.canvas.create_oval(
+                self.x - self.size, self.y - self.size,
+                self.x + self.size, self.y + self.size,
+                outline=self.color, width=3
+            )
+
+    def remove_symbol(self):
+        if self.symbol == "X":
+            self.canvas.delete(self.line1)
+            self.canvas.delete(self.line2)
+        else:
+            self.canvas.delete(self.circle)
+
+# Создание анимационных объектов (Только один раз)
+num_snakes = 15  # Увеличено количество змей
+num_agario_balls = 50  # Увеличено количество шариков Agario
+
+snakes = [Snake(animation_canvas, length=15) for _ in range(num_snakes)]
+agario_balls = [AgarioBall(animation_canvas) for _ in range(num_agario_balls)]
+tic_tac_toe_symbols = []
+
+def generate_tic_tac_toe_symbol():
+    symbol = random.choice(["X", "O"])
+    color = "#ffffff"
+    ttt_symbol = TicTacToeSymbol(animation_canvas, symbol, color)
+    tic_tac_toe_symbols.append(ttt_symbol)
+    # Удаляем символ через 3 секунды
+    app.after(3000, ttt_symbol.remove_symbol)
+    app.after(3000, lambda: tic_tac_toe_symbols.remove(ttt_symbol))
+
+def animate():
+    # Передвижение змей
+    for snake in snakes:
+        snake.move()
+
+    # Передвижение шариков Agario
+    for ball in agario_balls:
+        ball.move()
+
+    # Генерация символов крестиков-ноликов
+    if random.randint(1, 100) <= 2:  # 2% шанс генерации символа
+        generate_tic_tac_toe_symbol()
+
+    app.after(50, animate)  # Рекурсивный вызов через 50 мс
+
+animate()  # Запуск анимации
+
+# ---------------------
+# ЗАГОЛОВОК
+# ---------------------
+# Создаём отдельный Frame для главного экрана
+main_frame = tk.Frame(app, bg="#2c003e")
+main_frame.place(relx=0.5, rely=0.5, anchor="center")
+
+title_label = tk.Label(main_frame, text="GAMEULT", font=("Helvetica", 120, "bold"), fg="#00ff00", bg="#2c003e")
+title_label.pack(pady=(0, 50))  # Отступ снизу для разделения с кнопками
+
+# ---------------------
+# РАМКА ДЛЯ КНОПОК "ИГРАТЬ" И "ВЫЙТИ" (вертикально)
+# ---------------------
+buttons_frame = tk.Frame(main_frame, bg="#2c003e")
+buttons_frame.pack()
+
 def highlight_selected_button():
     for i, button in enumerate(buttons):
         if i == selected_button_index:
-            button.config(bg="#cce7cc", fg="black", font=("Helvetica", 20, "bold"))
+            button.config(bg="#cce7cc", fg="black", font=("Helvetica", 24, "bold"))  # Увеличенный шрифт для выбранной кнопки
         else:
             button.config(bg="#e6e6e6", fg="black", font=("Helvetica", 20))
 
@@ -104,212 +273,276 @@ def select_button(event):
     elif selected_button_index == 1:
         exit_app()
 
-def show_game_list():
-    global ball_animation_active
-    ball_animation_active = False
-    background_canvas.place_forget()
-    game_canvas.place(relx=0.5, rely=0.5, anchor="center")
-    animate_background()
-    highlight_selected_element()
-    app.bind("<Up>", navigate_up)
-    app.bind("<Down>", navigate_down)
-    app.bind("<Return>", select_element)
+# ---------------------
+# КНОПКИ ГЛАВНОГО ЭКРАНА (вертикально)
+# ---------------------
+play_button = tk.Button(
+    buttons_frame, 
+    text="Играть", 
+    command=lambda: show_game_list(),
+    font=("Helvetica", 20, "bold"),
+    fg="black", 
+    bg="#e6e6e6",
+    activebackground="#cccccc", 
+    borderwidth=10,
+    width=20,
+    height=2
+)
+play_button.pack(pady=20)  # Отступы между кнопками
 
-def exit_app():
-    app.quit()
-
-selected_game_index = 0
-def highlight_selected_element():
-    for i, label in enumerate(game_labels):
-        if i == selected_game_index:
-            label.config(fg="#cce7cc", font=("Helvetica", 25, "bold"))
-        else:
-            label.config(fg="white", font=("Helvetica", 25))
-    if selected_game_index == len(game_list):
-        back_button.config(bg="#cce7cc", fg="black")
-    else:
-        back_button.config(bg="#e6e6e6", fg="black")
-
-def navigate_up(event):
-    global selected_game_index
-    selected_game_index = (selected_game_index - 1) % (len(game_list) + 1)
-    highlight_selected_element()
-
-def navigate_down(event):
-    global selected_game_index
-    selected_game_index = (selected_game_index + 1) % (len(game_list) + 1)
-    highlight_selected_element()
-
-def select_element(event):
-    if selected_game_index < len(game_list):
-        selected_game = game_list[selected_game_index]
-        if selected_game == "SnakeULT":
-            run_snake_game()
-        elif selected_game == "AgarioULT":
-            run_agario_game()
-        elif selected_game == "HangmanULT":
-            run_hangman_game()
-    else:
-        hide_game_list()
-
-def hide_game_list():
-    global ball_animation_active
-    ball_animation_active = True
-    background_canvas.place(relx=0.5, rely=0.5, anchor="center")
-    game_canvas.place_forget()
-    app.unbind("<Up>")
-    app.unbind("<Down>")
-    app.unbind("<Return>")
-    app.bind("<Up>", navigate_buttons)
-    app.bind("<Down>", navigate_buttons)
-    app.bind("<Return>", select_button)
-    animate_elements()
-
-hue = 0
-def animate_background():
-    global hue
-    rgb = colorsys.hsv_to_rgb(hue, 0.5, 1)
-    rgb = tuple(int(c * 255) for c in rgb)
-    hex_color = f'#{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}'
-    game_canvas.itemconfig(bg_rect, fill=hex_color)
-    hue += 0.005
-    if hue > 1:
-        hue = 0
-    game_canvas.after(50, animate_background)
-
-def animate_elements():
-    if not ball_animation_active:
-        return
-
-    background_canvas.delete("all")
-    for ball in balls:
-        ball['x'] += ball['dx']
-        ball['y'] += ball['dy']
-        if ball['x'] < 0 or ball['x'] > screen_width:
-            ball['dx'] *= -1
-        if ball['y'] < 0 or ball['y'] > screen_height:
-            ball['dy'] *= -1
-        background_canvas.create_oval(
-            ball['x'] - ball['radius'], ball['y'] - ball['radius'],
-            ball['x'] + ball['radius'], ball['y'] + ball['radius'],
-            fill=ball['color'], outline=""
-        )
-    for snake in snakes:
-        head_x, head_y = snake['segments'][0]
-        new_head_x = head_x + snake['dx']
-        new_head_y = head_y + snake['dy']
-        snake['segments'] = [(new_head_x, new_head_y)] + snake['segments'][:-1]
-        if new_head_x < 0 or new_head_x > screen_width:
-            snake['dx'] *= -1
-        if new_head_y < 0 or new_head_y > screen_height:
-            snake['dy'] *= -1
-        for i, (x, y) in enumerate(snake['segments']):
-            color = f"#{int(255 - i * 12):02x}{int(i * 12):02x}{random.randint(100, 255):02x}"
-            background_canvas.create_oval(
-                x - snake['radius'], y - snake['radius'],
-                x + snake['radius'], y + snake['radius'],
-                fill=color, outline=""
-            )
-
-    app.after(50, animate_elements)
-
-def run_snake_game():
-    exe_path = r"C:\ourgamesproject\dist\snakeult.exe"  # Замените на реальный полный путь
-    print("Attempting to launch:", exe_path)  # Диагностический вывод пути
-    try:
-        subprocess.Popen([exe_path], shell=True)
-    except FileNotFoundError as e:
-        print(f"File {exe_path} not found. Error: {e}")
-
-def run_hangman_game():
-    exe_path = r"C:\ourgamesproject\dist\hangmanult.exe"  # Замените на реальный полный путь
-    print("Attempting to launch:", exe_path)  # Диагностический вывод пути
-    try:
-        subprocess.Popen([exe_path], shell=True)
-    except FileNotFoundError as e:
-        print(f"File {exe_path} not found. Error: {e}")
-
-def run_agario_game():
-    # Укажите абсолютный путь к `agarioult.exe`
-    exe_path = r"C:\ourgamesproject\dist\agarioult.exe"  # Замените на реальный полный путь
-    print("Attempting to launch:", exe_path)  # Диагностический вывод пути
-    try:
-        subprocess.Popen([exe_path], shell=True)
-    except FileNotFoundError as e:
-        print(f"File {exe_path} not found. Error: {e}")
-
-# Инициализация анимации шаров и змей
-for _ in range(num_balls):
-    balls.append({
-        'x': random.randint(0, screen_width),
-        'y': random.randint(0, screen_height),
-        'dx': random.choice([-ball_speed, ball_speed]),
-        'dy': random.choice([-ball_speed, ball_speed]),
-        'radius': random.randint(10, 30),
-        'color': "#%02x%02x%02x" % (random.randint(50, 255), random.randint(50, 255), random.randint(50, 255))
-    })
-
-for _ in range(num_snakes):
-    segments = [(random.randint(0, screen_width), random.randint(0, screen_height)) for _ in range(10)]
-    dx = random.choice([-snake_speed, snake_speed])
-    dy = random.choice([-snake_speed, snake_speed])
-    snakes.append({
-        'segments': segments,
-        'dx': dx,
-        'dy': dy,
-        'radius': 10
-    })
-
-# Инициализация кнопок и интерфейса
-frame = tk.Frame(buttons_frame_border_canvas, bg="#2c003e")
-frame.place(relx=0.5, rely=0.5, anchor="center")
-
-play_button = tk.Button(frame, text="Играть", command=show_game_list, font=("Helvetica", 20, "bold"),
-                        fg="black", bg="#e6e6e6", activebackground="#cccccc", borderwidth=10)
-play_button.pack(pady=20, ipadx=20, ipady=10)
-
-exit_button = tk.Button(frame, text="Выйти", command=exit_app, font=("Helvetica", 20, "bold"),
-                        fg="black", bg="#e6e6e6", activebackground="#cccccc", borderwidth=10)
-exit_button.pack(pady=20, ipadx=20, ipady=10)
+exit_button = tk.Button(
+    buttons_frame, 
+    text="Выйти", 
+    command=lambda: exit_app(),
+    font=("Helvetica", 20, "bold"), 
+    fg="black", 
+    bg="#e6e6e6",
+    activebackground="#cccccc", 
+    borderwidth=10,
+    width=20,
+    height=2
+)
+exit_button.pack(pady=20)
 
 buttons.extend([play_button, exit_button])
 highlight_selected_button()
 
+# ---------------------
+# GAME LIST ОКНО С ГОРИЗОНТАЛЬНЫМ СПИСКОМ ИГР
+# ---------------------
+# Создаём отдельный Frame для списка игр
+game_list_frame = tk.Frame(app, bg="#2c003e")
+
+# Canvas для списка игр
+game_canvas = tk.Canvas(game_list_frame, width=1200, height=700, bg="#2c003e", highlightthickness=0)
+game_canvas.pack(expand=True)
+
+# Создаём Frame внутри game_canvas для отображения игр
+game_frame = tk.Frame(game_canvas, bg="#2c003e")
+game_frame.place(relx=0.5, rely=0.5, anchor="center")
+
+# Кнопка "Назад"
+back_button_game = tk.Button(
+    game_frame, 
+    text="Назад", 
+    font=("Helvetica", 20, "bold"),
+    fg="black", 
+    bg="#e6e6e6", 
+    activebackground="#cccccc",
+    borderwidth=4,
+    command=lambda: hide_game_list()
+)
+back_button_game.pack(side="bottom", pady=20)
+
+# Кнопки для навигации по играм
+navigation_frame = tk.Frame(game_frame, bg="#2c003e")
+navigation_frame.pack(pady=20)
+
+left_game_btn = tk.Button(
+    navigation_frame, 
+    text="", 
+    font=("Helvetica", 15),
+    fg="white", 
+    bg="#4a148c",
+    activebackground="#7b1fa2",
+    borderwidth=2,
+    relief="raised",
+    bd=4,
+    width=15,
+    command=lambda: navigate_game(-1)
+)
+left_game_btn.pack(side="left", padx=50, pady=50)
+
+center_game_btn = tk.Button(
+    navigation_frame, 
+    text="", 
+    font=("Helvetica", 25, "bold"),
+    fg="black",  # Черный цвет для лучшего контраста
+    bg="#00ff00",  # Изменён на зелёный фон для центральной кнопки
+    activebackground="#a5d6a7",  # Более темный оттенок при активном состоянии
+    borderwidth=4,
+    relief="sunken",  # Визуально выделена
+    bd=4,
+    width=20,
+    command=lambda: select_current_game()
+)
+center_game_btn.pack(side="left", padx=50, pady=50)
+
+right_game_btn = tk.Button(
+    navigation_frame, 
+    text="", 
+    font=("Helvetica", 15),
+    fg="white", 
+    bg="#4a148c",
+    activebackground="#7b1fa2",
+    borderwidth=2,
+    relief="raised",
+    bd=4,
+    width=15,
+    command=lambda: navigate_game(1)
+)
+right_game_btn.pack(side="left", padx=50, pady=50)
+
+def update_game_display():
+    left_index = (selected_game_index - 1) % len(game_list)
+    right_index = (selected_game_index + 1) % len(game_list)
+    left_game_btn.config(text=game_list[left_index], bg="#4a148c")
+    center_game_btn.config(text=game_list[selected_game_index], bg="#00ff00")  # Центральная кнопка теперь зелёная
+    right_game_btn.config(text=game_list[right_index], bg="#4a148c")
+
+def navigate_game(direction):
+    global selected_game_index
+    selected_game_index = (selected_game_index + direction) % len(game_list)
+    update_game_display()
+    highlight_selected_element()
+
+def select_current_game():
+    selected_game = game_list[selected_game_index]
+    select_game(selected_game)
+
+# ---------------------
+# ФУНКЦИИ ЗАПУСКА ИГР
+# ---------------------
+def run_snake_game():
+    try:
+        subprocess.Popen([sys.executable, os.path.join(script_dir, "snakeult.py")])
+    except Exception as e:
+        print(f"Ошибка при запуске SnakeULT: {e}")
+
+def run_agario_game():
+    try:
+        agario_process = subprocess.Popen([sys.executable, os.path.join(script_dir, "agarioult.py")])
+        agario_process.wait()
+        show_game_list()
+    except Exception as e:
+        print(f"Ошибка при запуске AgarioULT: {e}")
+
+def run_hangman_game():
+    try:
+        hangman_process = subprocess.Popen([sys.executable, os.path.join(script_dir, "hangmanult.py")])
+        hangman_process.wait()
+        show_game_list()
+    except Exception as e:
+        print(f"Ошибка при запуске HangmanULT: {e}")
+
+def run_tictactoe_game():
+    try:
+        tictactoe_process = subprocess.Popen([sys.executable, os.path.join(script_dir, "tictactoeult.py")])
+        tictactoe_process.wait()
+        show_game_list()
+    except Exception as e:
+        print(f"Ошибка при запуске TicTacToeULT: {e}")
+
+def run_pong_game():
+    try:
+        pong_process = subprocess.Popen([sys.executable, os.path.join(script_dir, "pongult.py")])
+        pong_process.wait()
+        show_game_list()
+    except Exception as e:
+        print(f"Ошибка при запуске PongULT: {e}")
+
+def run_minesweeper_game():
+    try:
+        mines_process = subprocess.Popen([sys.executable, os.path.join(script_dir, "minesweeperult.py")])
+        mines_process.wait()
+        show_game_list()
+    except Exception as e:
+        print(f"Ошибка при запуске MinesweeperULT: {e}")
+
+def select_game(game_name):
+    if game_name == "SnakeULT":
+        run_snake_game()
+    elif game_name == "AgarioULT":
+        run_agario_game()
+    elif game_name == "HangmanULT":
+        run_hangman_game()
+    elif game_name == "TicTacToeULT":
+        run_tictactoe_game()
+    elif game_name == "PongULT":
+        run_pong_game()
+    elif game_name == "MinesweeperULT":
+        run_minesweeper_game()
+    elif game_name == "Назад":
+        hide_game_list()
+
+# ---------------------
+# ПЕРЕКЛЮЧЕНИЕ МЕЖДУ ГЛАВНЫМ ЭКРАНОМ И СПИСКОМ ИГР
+# ---------------------
+def show_game_list():
+    main_frame.place_forget()  # Скрываем главный экран
+    game_list_frame.place(relx=0.5, rely=0.5, anchor="center")  # Показываем список игр
+    global selected_game_index
+    selected_game_index = 0
+    update_game_display()
+    highlight_selected_element()
+    app.bind("<Left>", navigate_game_left)
+    app.bind("<Right>", navigate_game_right)
+    app.bind("<Down>", navigate_to_back)
+    app.bind("<Return>", select_game_with_keys)
+    # Начинаем анимацию прокрутки (пока без реализации)
+    animate_scroll()
+
+def hide_game_list():
+    game_list_frame.place_forget()  # Скрываем список игр
+    main_frame.place(relx=0.5, rely=0.5, anchor="center")  # Показываем главный экран
+    highlight_selected_button()
+    app.unbind("<Left>")
+    app.unbind("<Right>")
+    app.unbind("<Down>")
+    app.unbind("<Return>")
+    app.bind("<Up>", navigate_buttons)
+    app.bind("<Down>", navigate_buttons)
+
+def exit_app():
+    app.quit()
+
+# ---------------------
+# НАВИГАЦИЯ И ВЫБОР ИГР
+# ---------------------
+def highlight_selected_element():
+    # Подсвечиваем центральную кнопку игры зелёным цветом
+    center_game_btn.config(bg="#00ff00", fg="white")  # Зелёный фон, белый текст
+    left_game_btn.config(bg="#4a148c", fg="white")
+    right_game_btn.config(bg="#4a148c", fg="white")
+    center_game_btn.config(relief="sunken")
+    left_game_btn.config(relief="raised")
+    right_game_btn.config(relief="raised")
+
+def navigate_game_left(event):
+    navigate_game(-1)
+
+def navigate_game_right(event):
+    navigate_game(1)
+
+def navigate_to_back(event):
+    if event.keysym == "Down":
+        # Фокусируемся на кнопке "Назад"
+        back_button_game.focus_set()
+        back_button_game.config(bg="#ff0000", fg="white")  # Красный фон, белый текст
+
+def select_game_with_keys(event):
+    if app.focus_get() == back_button_game:
+        select_game("Назад")
+    else:
+        select_game(game_list[selected_game_index])
+
+# ---------------------
+# ПЛАВНОЕ ПРОКРУЧИВАНИЕ СПИСКА ИГР
+# ---------------------
+def animate_scroll():
+    # Плавное прокручивание реализовано путем изменения позиции фрейма
+    # Для упрощения оставим базовую реализацию без анимации
+    pass  # Место для будущей доработки
+
+# ---------------------
+# START MAINLOOP
+# ---------------------
+# Начальные привязки клавиш для главного экрана
 app.bind("<Up>", navigate_buttons)
 app.bind("<Down>", navigate_buttons)
 app.bind("<Return>", select_button)
 
-game_canvas = tk.Canvas(app, width=1200, height=700, bg="#2c003e", highlightthickness=0)
-game_canvas.place_forget()
-
-corner_radius = 50
-bg_rect = game_canvas.create_rectangle(corner_radius, 0, 1200 - corner_radius, 700, fill="#2c003e", outline="")
-game_canvas.create_rectangle(0, corner_radius, 1200, 700 - corner_radius, fill="#2c003e", outline="")
-
-game_canvas.create_oval(0, 0, corner_radius * 2, corner_radius * 2, fill="#2c003e", outline="")
-game_canvas.create_oval(1200 - corner_radius * 2, 0, 1200, corner_radius * 2, fill="#2c003e", outline="")
-game_canvas.create_oval(0, 700 - corner_radius * 2, corner_radius * 2, 700, fill="#2c003e", outline="")
-game_canvas.create_oval(1200 - corner_radius * 2, 700 - corner_radius * 2, 1200, 700, fill="#2c003e", outline="")
-
-game_header = tk.Label(game_canvas, text="Во что сыграем?", font=("Helvetica", 40, "bold"), bg="#2c003e", fg="white")
-game_header.place(relx=0.5, rely=0.15, anchor="center")
-
-# Обновленный список игр
-game_list = ["AgarioULT", "SnakeULT", "HangmanULT"]
-game_labels = []
-
-for i, game in enumerate(game_list):
-    game_label = tk.Label(game_canvas, text=game, font=("Helvetica", 25), fg="white", bg="#2c003e")
-    game_label.place(relx=0.5, rely=0.3 + i * 0.15, anchor="center")
-    game_labels.append(game_label)
-
-back_button = tk.Button(game_canvas, text="Назад", command=hide_game_list, font=("Helvetica", 20, "bold"),
-                        fg="black", bg="#e6e6e6", activebackground="#cccccc", borderwidth=10)
-back_button.place(relx=0.505, rely=0.80, anchor="center")
-
-# Запуск анимаций
+# Запуск анимации цветов кнопок
 animate_button_colors()
-animate_elements()
-animate_border()
-animate_buttons_frame_border()
+
 app.mainloop()
