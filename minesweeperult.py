@@ -1,16 +1,3 @@
-"""
-Файл: minesweeperult.py
-Описание:
-    - Упрощённый "Сапёр" 10x10, полноэкранный режим, адаптируется под текущее разрешение экрана.
-    - Главное меню (Начать игру / Выйти), управление стрелками + Enter.
-    - Меню паузы (ESC) => (Продолжить / В главное меню), управление стрелками + Enter.
-    - Сохранение количества побед в файл "minesweeperult_score.txt".
-    - Сохранение лучшего времени в файл "minesweeperult_besttime.txt".
-    - Медленный тёмный градиентный фон, статичный текст "PAUSED".
-    - Отображение текущего времени и лучшего результата во время игры.
-    - Мерцание текста при победе/поражении.
-"""
-
 import pygame
 import sys
 import random
@@ -39,6 +26,7 @@ TEXT_COLOR     = (0, 0, 0)
 BOMB_COLOR     = (255, 0, 0)
 WHITE_COLOR    = (255, 255, 255)
 PAUSE_OVERLAY  = (0, 0, 0, 180)  # Полупрозрачный для паузы
+GREEN_COLOR    = (0, 255, 0)      # Новый цвет для авто-открытых клеток
 
 # ============= ШРИФТЫ =============
 pygame.font.init()
@@ -60,19 +48,24 @@ class Cell:
     def __init__(self):
         self.is_mine     = False
         self.is_revealed = False
-        self.is_flagged  = False
         self.mine_count  = 0
+        self.auto_opened = False  # Существующий флаг
+        self.mark        = None     # Новый флаг: 'flag', 'cross', 'check'
 
-# Создаём поле
-def create_grid():
+# ============= ФУНКЦИИ =============
+
+# Создаём поле с возможностью исключения определённых клеток из размещения мин
+def create_grid(exclude_cells=None):
+    if exclude_cells is None:
+        exclude_cells = []
     grid = [[Cell() for _ in range(GRID_SIZE)] for __ in range(GRID_SIZE)]
 
-    # Расставим мины
+    # Расставим мины, исключая указанные клетки
     mines_placed = 0
     while mines_placed < NUM_MINES:
         r = random.randint(0, GRID_SIZE - 1)
         c = random.randint(0, GRID_SIZE - 1)
-        if not grid[r][c].is_mine:
+        if not grid[r][c].is_mine and (r, c) not in exclude_cells:
             grid[r][c].is_mine = True
             mines_placed += 1
 
@@ -94,16 +87,18 @@ def create_grid():
 
 def reveal_cell(grid, row, col):
     """Открытие ячейки. Если 0 – рекурсивно открываем соседей."""
-    if grid[row][col].is_flagged or grid[row][col].is_revealed:
+    if grid[row][col].is_revealed or grid[row][col].mark == 'flag':
         return
     grid[row][col].is_revealed = True
+    grid[row][col].mark = None  # Сброс отметки при открытии
     if grid[row][col].mine_count == 0 and not grid[row][col].is_mine:
         for dr in [-1, 0, 1]:
             for dc in [-1, 0, 1]:
                 nr = row + dr
                 nc = col + dc
                 if 0 <= nr < GRID_SIZE and 0 <= nc < GRID_SIZE:
-                    if not grid[nr][nc].is_revealed and not grid[nr][nc].is_mine:
+                    neighbor = grid[nr][nc]
+                    if not neighbor.is_revealed and not neighbor.is_mine:
                         reveal_cell(grid, nr, nc)
 
 def check_win(grid):
@@ -178,6 +173,72 @@ def animate_text_blink(text, font_, color, center, position, phase_speed=0.005):
         rect = blink_surface.get_rect(topleft=position)
     screen.blit(blink_surface, rect)
 
+# ============= ФУНКЦИЯ АВТО-ОТКРЫТИЯ БЕЗОПАСНЫХ КЛЕТОК =============
+def auto_reveal_safe_cells(grid):
+    """Автоматически открывает клетки, которые, по логике, безопасны."""
+    changed = True
+    while changed:
+        changed = False
+        for row in range(GRID_SIZE):
+            for col in range(GRID_SIZE):
+                cell = grid[row][col]
+                if cell.is_revealed and cell.mine_count > 0:
+                    flagged = 0
+                    covered = []
+                    for dr in [-1, 0, 1]:
+                        for dc in [-1, 0, 1]:
+                            nr = row + dr
+                            nc = col + dc
+                            if 0 <= nr < GRID_SIZE and 0 <= nc < GRID_SIZE:
+                                neighbor = grid[nr][nc]
+                                if neighbor.mark == 'flag':
+                                    flagged += 1
+                                elif not neighbor.is_revealed:
+                                    covered.append((nr, nc))
+                    # Если количество флагов равно числу мин, оставшиеся клетки безопасны
+                    if flagged == cell.mine_count:
+                        for nr, nc in covered:
+                            neighbor = grid[nr][nc]
+                            if not neighbor.is_revealed:
+                                neighbor.is_revealed = True
+                                neighbor.auto_opened = True
+                                if neighbor.mine_count == 0:
+                                    reveal_cell(grid, nr, nc)
+                                changed = True
+                    # Дополнительная логика может быть добавлена здесь
+    return
+
+# ============= ФУНКЦИИ ДЛЯ РИСОВАНИЯ МЕТКИЙ =============
+
+def draw_flag(x, y):
+    """Рисует флаг на клетке."""
+    # Рисуем треугольник флага
+    point1 = (x + CELL_SIZE // 4, y + CELL_SIZE // 4)
+    point2 = (x + CELL_SIZE // 4, y + 3 * CELL_SIZE // 4)
+    point3 = (x + 3 * CELL_SIZE // 4, y + CELL_SIZE // 2)
+    pygame.draw.polygon(screen, (255, 0, 0), [point1, point2, point3])
+
+def draw_cross(x, y):
+    """Рисует красный крест на клетке."""
+    pygame.draw.line(screen, (255, 0, 0), (x + 10, y + 10), (x + CELL_SIZE - 10, y + CELL_SIZE - 10), 3)
+    pygame.draw.line(screen, (255, 0, 0), (x + CELL_SIZE - 10, y + 10), (x + 10, y + CELL_SIZE - 10), 3)
+
+def draw_check(x, y):
+    """Рисует зеленую галочку на клетке."""
+    pygame.draw.line(screen, (0, 255, 0), (x + 10, y + CELL_SIZE // 2), (x + CELL_SIZE // 3, y + CELL_SIZE - 10), 3)
+    pygame.draw.line(screen, (0, 255, 0), (x + CELL_SIZE // 3, y + CELL_SIZE - 10), (x + CELL_SIZE - 10, y + 10), 3)
+
+def cycle_mark(cell):
+    """Циклически переключает маркировку клетки."""
+    if cell.mark is None:
+        cell.mark = 'flag'
+    elif cell.mark == 'flag':
+        cell.mark = 'cross'
+    elif cell.mark == 'cross':
+        cell.mark = 'check'
+    elif cell.mark == 'check':
+        cell.mark = None
+
 # ============= ОТРИСОВКА ГРИДА И ЭЛЕМЕНТОВ =============
 def draw_grid(grid, game_over, win, elapsed_time, best_time):
     screen.fill(animate_background_slowdark())
@@ -193,16 +254,27 @@ def draw_grid(grid, game_over, win, elapsed_time, best_time):
                 if cell.is_mine:
                     pygame.draw.rect(screen, BOMB_COLOR, rect)
                 else:
-                    pygame.draw.rect(screen, CELL_REVEALED, rect)
+                    color = CELL_REVEALED
+                    if cell.auto_opened:
+                        color = GREEN_COLOR
+                    pygame.draw.rect(screen, color, rect)
                     if cell.mine_count > 0:
                         text_surface = font.render(str(cell.mine_count), True, TEXT_COLOR)
-                        screen.blit(text_surface, (x + CELL_SIZE // 3, y + CELL_SIZE // 6))
+                        text_rect = text_surface.get_rect(center=(x + CELL_SIZE // 2, y + CELL_SIZE // 2))
+                        screen.blit(text_surface, text_rect)
             else:
                 # Закрытая клетка
                 pygame.draw.rect(screen, CELL_COVERED, rect)
-                if cell.is_flagged:
-                    pygame.draw.rect(screen, CELL_FLAG, rect)
+                # Рисуем маркировку, если есть
+                if cell.mark is not None:
+                    if cell.mark == 'flag':
+                        draw_flag(x, y)
+                    elif cell.mark == 'cross':
+                        draw_cross(x, y)
+                    elif cell.mark == 'check':
+                        draw_check(x, y)
 
+            # Рисуем границу клетки
             pygame.draw.rect(screen, WHITE_COLOR, rect, 2)
 
     # Если игра окончена — выводим сообщение
@@ -322,19 +394,22 @@ def pause_menu():
 
 # ============= MAIN LOOP: Одна партия игры =============
 def run_game():
-    grid = create_grid()
+    grid = None  # Изначально поле не создано
     game_over = False
     win = False
     wins = load_wins()
     best_time = load_best_time()
-    start_time = pygame.time.get_ticks()
+    start_time = 0
     paused_time = 0
     pause_start_ticks = 0
+    first_click = True  # Флаг первого клика
 
     while True:
         current_ticks = pygame.time.get_ticks()
-        if not game_over:
+        if not game_over and not first_click:
             elapsed_time = (current_ticks - start_time - paused_time) / 1000  # в секундах
+        elif not game_over and first_click:
+            elapsed_time = 0
         else:
             elapsed_time = (pause_start_ticks - start_time - paused_time) / 1000  # время до окончания игры
 
@@ -370,36 +445,73 @@ def run_game():
                             best_time = elapsed_time
                             save_best_time(best_time)
                     # Создаём новое поле
-                    grid = create_grid()
+                    grid = None
                     game_over = False
                     win = False
-                    start_time = pygame.time.get_ticks()
+                    start_time = 0
                     paused_time = 0
+                    pause_start_ticks = 0
+                    first_click = True
             elif event.type == pygame.MOUSEBUTTONDOWN and not game_over:
                 mouse_x, mouse_y = pygame.mouse.get_pos()
                 col = (mouse_x - OFFSET_X) // CELL_SIZE
                 row = (mouse_y - OFFSET_Y) // CELL_SIZE
                 if 0 <= row < GRID_SIZE and 0 <= col < GRID_SIZE:
                     if event.button == 1:  # левая кнопка мыши
-                        if not grid[row][col].is_flagged:
-                            grid[row][col].is_revealed = True
-                            if grid[row][col].is_mine:
+                        if grid is None:
+                            # Первый клик: создаём поле, исключая первую клетку и её соседей
+                            exclude = [(row, col)]
+                            for dr in [-1, 0, 1]:
+                                for dc in [-1, 0, 1]:
+                                    nr = row + dr
+                                    nc = col + dc
+                                    if 0 <= nr < GRID_SIZE and 0 <= nc < GRID_SIZE:
+                                        exclude.append((nr, nc))
+                            grid = create_grid(exclude)
+                            start_time = pygame.time.get_ticks()
+                            first_click = False
+
+                        cell = grid[row][col]
+                        if cell.mark != 'flag' and cell.mark != 'cross' and cell.mark != 'check':
+                            reveal_cell(grid, row, col)
+                            if cell.is_mine:
                                 game_over = True
                                 win = False
                             else:
-                                if grid[row][col].mine_count == 0:
-                                    reveal_cell(grid, row, col)
-                            if check_win(grid):
-                                game_over = True
-                                win = True
+                                if check_win(grid):
+                                    game_over = True
+                                    win = True
+                                else:
+                                    # После ручного открытия, попробуем авто-открыть безопасные клетки
+                                    auto_reveal_safe_cells(grid)
+                                    if check_win(grid):
+                                        game_over = True
+                                        win = True
                     elif event.button == 3:  # правая кнопка мыши
-                        cell = grid[row][col]
-                        if not cell.is_revealed:
-                            cell.is_flagged = not cell.is_flagged
+                        if grid is not None:
+                            cell = grid[row][col]
+                            if not cell.is_revealed:
+                                cycle_mark(cell)
 
-        draw_grid(grid, game_over, win, elapsed_time, best_time)
+        # Отрисовка
+        if grid is not None:
+            draw_grid(grid, game_over, win, elapsed_time, best_time)
+        else:
+            # Рисуем закрытые клетки без марок (пока поле не создано)
+            screen.fill(animate_background_slowdark())
+            for row in range(GRID_SIZE):
+                for col in range(GRID_SIZE):
+                    x = OFFSET_X + col * CELL_SIZE
+                    y = OFFSET_Y + row * CELL_SIZE
+                    rect = pygame.Rect(x, y, CELL_SIZE, CELL_SIZE)
+                    pygame.draw.rect(screen, CELL_COVERED, rect)
+                    pygame.draw.rect(screen, WHITE_COLOR, rect, 2)
+            # Отображаем количество побед
+            win_text = f"Победы: {wins}"
+            win_surf = font.render(win_text, True, WHITE_COLOR)
+            screen.blit(win_surf, (OFFSET_X, OFFSET_Y - 150))
 
-        # Отображаем количество побед
+        # Отображаем количество побед (дублируется, можно убрать одну)
         win_text = f"Победы: {wins}"
         win_surf = font.render(win_text, True, WHITE_COLOR)
         screen.blit(win_surf, (OFFSET_X, OFFSET_Y - 150))
